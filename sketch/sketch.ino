@@ -5,12 +5,13 @@
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-#define BUTTON_CLK_PIN 2
+#define BUTTON_CLK_PIN 4
 #define BUTTON_DT_PIN 3
-#define BUTTON_SW_PIN 4
+#define BUTTON_SW_PIN 2
 #define ENCODER_DO_NOT_USE_INTERRUPTS
 
-#define DELAY_POWER_SAVER 60000
+//#define DELAY_POWER_SAVER 60000
+#define DELAY_POWER_SAVER 10000
 
 
 Adafruit_SSD1306 screen(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
@@ -60,8 +61,6 @@ void loop() {
   counter++;
 
   updateScreen();
-  
-  //powerDown();
 }
 
 void setupPowerSaver() {
@@ -71,6 +70,7 @@ void setupPowerSaver() {
 void checkPowerSaver() {
   if ((millis() - lastActivityTime) > DELAY_POWER_SAVER) {
     powerDown();
+    checkPowerSaver();
   }
 }
 
@@ -103,6 +103,13 @@ void updateScreen() {
   drawDigit(0, 0, 0);
   drawDigit(1, 5, 0);
   drawDigit(2, 10, 0);
+  drawDigit(3, 15, 0);
+  drawDigit(4, 20, 0);
+  drawDigit(5, 25, 0);
+  drawDigit(6, 30, 0);
+  drawDigit(7, 35, 0);
+  drawDigit(8, 40, 0);
+  drawDigit(9, 45, 0);
   //*/
 
   // Separator
@@ -110,6 +117,7 @@ void updateScreen() {
 
   //
   screen.setCursor(0, 9);
+  screen.println(powerSaverCountdown);
   screen.println(rotaryButtonValue);
 
   // Update
@@ -120,14 +128,14 @@ void powerDown() {
   screen.clearDisplay();
   screen.display();
   
-  //attachInterrupt(0, wakeUp, LOW);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_SW_PIN), wakeUp, LOW);
   LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);
   //LowPower.powerSave(SLEEP_FOREVER, ADC_OFF, BOD_OFF, TIMER2_ON);
-  //detachInterrupt(0);
+  detachInterrupt(digitalPinToInterrupt(BUTTON_SW_PIN));
 }
 
 void wakeUp() {
-
+  lastActivityTime = millis();
 }
 
 void drawDigit(uint8_t digit, uint8_t x, uint8_t y) {
@@ -146,6 +154,12 @@ void drawDigit(uint8_t digit, uint8_t x, uint8_t y) {
       screen.drawFastHLine(x, y + 2, 3, WHITE);
       screen.drawPixel(x, y + 3, WHITE);
       screen.drawFastHLine(x, y + 4, 3, WHITE);
+      break;
+    case 3:
+      screen.drawFastHLine(x, y, 3, WHITE);
+      screen.drawFastHLine(x, y + 2, 3, WHITE);
+      screen.drawFastHLine(x, y + 4, 3, WHITE);
+      screen.drawFastVLine(x + 2, y, 5, WHITE);
       break;
   }
 }
