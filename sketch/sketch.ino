@@ -8,10 +8,13 @@
 #define BUTTON_CLK_PIN 4
 #define BUTTON_DT_PIN 3
 #define BUTTON_SW_PIN 2
-#define ENCODER_DO_NOT_USE_INTERRUPTS
+//#define ENCODER_DO_NOT_USE_INTERRUPTS
 
-//#define DELAY_POWER_SAVER 60000
-#define DELAY_POWER_SAVER 10000
+#define MAX_VOLT 4.2
+#define MIN_VOLT 3.2
+#define BATTERY_GAUGE_WIDTH 10
+
+#define DELAY_POWER_SAVER 20000
 
 
 Adafruit_SSD1306 screen(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
@@ -21,21 +24,21 @@ long rotaryButtonValue = 0;
 long counter = 0;
 long lastActivityTime;
 
-void TimerHandler() {
-  static bool toggle = false;
-
-  Serial.println("Hop: " + millis());
-  toggle = !toggle;
-}
+enum Page
+{
+  PAGE_HOME,
+  PAGE_PLANT
+};
+Page currentPage = PAGE_HOME;
+uint8_t homePageMenuIndex = 0;
+uint8_t plantPageMenuIndex = 0;
 
 void setup() {
   /*
-  Serial.begin(9600);
+  Serial.begin(2000000);
   Serial.println(F("Initialize System"));
-  Serial.println(BOARD_TYPE);
-  Serial.println(TIMER_INTERRUPT_VERSION);
-  Serial.print(F("CPU Frequency = ")); Serial.print(F_CPU / 1000000); Serial.println(F(" MHz"));
-  */
+  //*/
+  
   setupPowerSaver();
   setupScreen();
   setupRotaryButton();
@@ -51,6 +54,7 @@ void loop() {
 
 
   if (digitalRead(BUTTON_SW_PIN) == LOW) {
+    wakeUp();
     rotaryButtonValue = 0;
   }
 
@@ -95,33 +99,60 @@ void setupRotaryButton() {
 void updateScreen() {
   screen.clearDisplay();
 
-  // Header
-  long powerSaverCountdown = DELAY_POWER_SAVER - (millis() - lastActivityTime);
-  screen.setCursor(0, 0);
-  //*
-  // Debug
-  drawDigit(0, 0, 0);
-  drawDigit(1, 5, 0);
-  drawDigit(2, 10, 0);
-  drawDigit(3, 15, 0);
-  drawDigit(4, 20, 0);
-  drawDigit(5, 25, 0);
-  drawDigit(6, 30, 0);
-  drawDigit(7, 35, 0);
-  drawDigit(8, 40, 0);
-  drawDigit(9, 45, 0);
-  //*/
+  // Header: Power Save Countdown
+  long powerSaverCountdown = (DELAY_POWER_SAVER - (millis() - lastActivityTime)) / 1000;
+  drawNumber(powerSaverCountdown, 0, 0);
+
+  // Header: Battery
+  double currentVolt = readVcc() / 1000.0;
+  double batteryLevel = currentVolt - MIN_VOLT;
+  uint8_t batteryPercent = (batteryLevel / (MAX_VOLT - MIN_VOLT)) * 100;
+  drawBattery(batteryPercent, SCREEN_WIDTH - BATTERY_GAUGE_WIDTH, 0);
+  
 
   // Separator
-  screen.drawFastHLine(0, 7, SCREEN_WIDTH, WHITE);
+  screen.drawFastHLine(0, 6, SCREEN_WIDTH, WHITE);
 
-  //
+  // Page
+  switch (currentPage) {
+    case PAGE_HOME:
+      displayHomePage();
+      break;
+  }
+  /*
   screen.setCursor(0, 9);
-  screen.println(powerSaverCountdown);
   screen.println(rotaryButtonValue);
+  screen.println(millis());
+  */
 
   // Update
   screen.display();
+}
+
+void displayHomePage() {
+  // Water gauge
+  uint8_t startX = 0;
+  uint8_t startY = 10;
+  screen.drawFastVLine(startX, startY, 40, WHITE);
+  screen.drawFastVLine(startX + 10, startY, 40, WHITE);
+  screen.drawFastHLine(startX, startY + 39, 11, WHITE);
+
+  // Water icon
+  uint8_t iconX = 0;
+  uint8_t iconY = 54;
+  screen.drawFastHLine(iconX + 4, iconY, 2, WHITE);
+  screen.drawFastHLine(iconX + 5, iconY + 1, 2, WHITE);
+  screen.drawFastHLine(iconX + 5, iconY + 2, 3, WHITE);
+  screen.drawFastHLine(iconX + 4, iconY + 3, 4, WHITE);
+  screen.drawFastHLine(iconX + 3, iconY + 4, 6, WHITE);
+  screen.drawFastHLine(iconX + 2, iconY + 5, 7, WHITE);
+  screen.drawFastHLine(iconX + 2, iconY + 6, 7, WHITE);
+  screen.drawFastHLine(iconX + 2, iconY + 7, 7, WHITE);
+  screen.drawFastHLine(iconX + 3, iconY + 8, 5, WHITE);
+  screen.drawFastHLine(iconX + 4, iconY + 9, 3, WHITE);
+  screen.drawFastVLine(iconX + 7, iconY + 5, 2, BLACK);
+  screen.drawFastHLine(iconX + 6, iconY + 7, 2, BLACK);
+  screen.drawFastHLine(iconX + 5, iconY + 8, 2, BLACK);
 }
 
 void powerDown() {
@@ -161,5 +192,105 @@ void drawDigit(uint8_t digit, uint8_t x, uint8_t y) {
       screen.drawFastHLine(x, y + 4, 3, WHITE);
       screen.drawFastVLine(x + 2, y, 5, WHITE);
       break;
+    case 4:
+      screen.drawFastVLine(x, y, 2, WHITE);
+      screen.drawFastHLine(x, y + 2, 3, WHITE);
+      screen.drawFastVLine(x + 2, y, 5, WHITE);
+      break;
+    case 5:
+      screen.drawFastHLine(x, y, 3, WHITE);
+      screen.drawPixel(x, y + 1, WHITE);
+      screen.drawFastHLine(x, y + 2, 3, WHITE);
+      screen.drawPixel(x + 2, y + 3, WHITE);
+      screen.drawFastHLine(x, y + 4, 3, WHITE);
+      break;
+    case 6:
+      screen.drawFastHLine(x, y, 3, WHITE);
+      screen.drawPixel(x, y + 1, WHITE);
+      screen.drawRect(x, y + 2, 3, 3, WHITE);
+      break;
+    case 7:
+      screen.drawFastHLine(x, y, 3, WHITE);
+      screen.drawFastVLine(x + 2, y, 5, WHITE);
+      break;
+    case 8:
+      screen.drawRect(x, y, 3, 3, WHITE);
+      screen.drawRect(x, y + 2, 3, 3, WHITE);
+      break;
+    case 9:
+      screen.drawFastHLine(x, y + 4, 3, WHITE);
+      screen.drawPixel(x + 2, y + 3, WHITE);
+      screen.drawRect(x, y, 3, 3, WHITE);
+      break;
   }
+}
+
+void drawNumber(long value, uint8_t x, uint8_t y) {
+  uint8_t digit;
+  uint8_t offset = 0;
+
+  if (value >= 10000) {
+    digit = (value / 10000) % 10;
+    drawDigit(digit, x + offset, y);
+    offset += 5;
+  }
+  if (value >= 1000) {
+    digit = (value / 1000) % 10;
+    drawDigit(digit, x + offset, y);
+    offset += 5;
+  }
+  if (value >= 100) {
+    digit = (value / 100) % 10;
+    drawDigit(digit, x + offset, y);
+    offset += 5;
+  }
+  if (value >= 10) {
+    digit = (value / 10) % 10;
+    drawDigit(digit, x + offset, y);
+    offset += 5;
+  }
+  
+  digit = value % 10;
+  drawDigit(digit, x + offset, y);
+}
+
+void drawBattery(uint8_t percent, uint8_t x, uint8_t y) {
+  screen.drawRect(x, y, BATTERY_GAUGE_WIDTH, 5, WHITE);
+
+  uint8_t gauge = percent / BATTERY_GAUGE_WIDTH;
+
+  for (uint8_t offset = 0; offset < gauge; offset++) {
+    screen.drawFastVLine(x + offset, y, 5, WHITE);
+  }
+  
+  screen.drawPixel(x + BATTERY_GAUGE_WIDTH - 1, y, BLACK);
+  screen.drawPixel(x + BATTERY_GAUGE_WIDTH - 1, y + 4, BLACK);
+  screen.drawPixel(x + BATTERY_GAUGE_WIDTH - 2, y + 1, WHITE);
+  screen.drawPixel(x + BATTERY_GAUGE_WIDTH - 2, y + 3, WHITE);
+}
+
+long readVcc() {
+  // Read 1.1V reference against AVcc
+  // set the reference to Vcc and the measurement to the internal 1.1V reference
+#if defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
+  ADMUX = _BV(REFS0) | _BV(MUX4) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+#elif defined (__AVR_ATtiny24__) || defined(__AVR_ATtiny44__) || defined(__AVR_ATtiny84__)
+  ADMUX = _BV(MUX5) | _BV(MUX0);
+#elif defined (__AVR_ATtiny25__) || defined(__AVR_ATtiny45__) || defined(__AVR_ATtiny85__)
+  ADMUX = _BV(MUX3) | _BV(MUX2);
+#else
+  ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+#endif
+
+  delay(2); // Wait for Vref to settle
+  ADCSRA |= _BV(ADSC); // Start conversion
+  while (bit_is_set(ADCSRA, ADSC)); // measuring
+
+  uint8_t low  = ADCL; // must read ADCL first - it then locks ADCH
+  uint8_t high = ADCH; // unlocks both
+
+  long result = (high << 8) | low;
+
+  result = 1125300L / result; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
+  return result; // Vcc in millivolts
 }
