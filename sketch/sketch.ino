@@ -16,15 +16,11 @@
 #define MIN_MOISTURE_VALUE 300
 #define MAX_MOISTURE_VALUE 600
 
-
 #define MAX_VOLT 4.2
 #define MIN_VOLT 3.2
 #define BATTERY_GAUGE_WIDTH 10
 
 #define DELAY_POWER_SAVER 60000
-
-#define PLANT_COUNT 8
-
 
 Adafruit_SSD1306 screen(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
@@ -40,15 +36,33 @@ enum Page
 Page currentPage = PAGE_HOME;
 uint8_t homePageMenuIndex = 0;
 uint8_t homePageMenuOffset = 0;
+
+struct Plant {
+  char* name;
+  uint16_t moistureSensorPin;
+  uint16_t minMoisture;
+  uint16_t maxMoisture;
+};
+#define PLANT_COUNT 8
+Plant plants[PLANT_COUNT] = {
+  {"A", A0, 300, 600},
+  {"B", A1, 300, 600},
+  {"C", A2, 300, 600},
+  {"D", A3, 300, 600},
+  {"E", A0, 300, 600},
+  {"F", A0, 300, 600},
+  {"G", A0, 300, 600},
+  {"H", A0, 300, 600}
+};
 uint8_t plantPageMenuIndex = 0;
 uint8_t plantPageMenuOffset = 0;
-char *plantPageMenu[] = {
+#define PLANT_PAGE_MENU_SIZE 4
+char *plantPageMenu[PLANT_PAGE_MENU_SIZE] = {
   "Retour",
   "Arroser",
   "Interval",
   "Seuil"
 };
-uint8_t plantPageMenuSize = 4;
 
 void setup() {
   /*
@@ -184,8 +198,7 @@ void displayHomePage() {
   uint8_t menuY = 10;
   for (uint8_t index = homePageMenuOffset; index < PLANT_COUNT; index++) {
     screen.setCursor(menuX + 2, menuY + 2 + (index - homePageMenuOffset) * 12);
-    screen.print("Plante ");
-    screen.print(index + 1);
+    screen.print(plants[index].name);
     if (index == homePageMenuIndex) {
       screen.fillRect(menuX, menuY + (index - homePageMenuOffset) * 12, SCREEN_WIDTH - menuX, 12, INVERSE);
     }
@@ -194,16 +207,16 @@ void displayHomePage() {
 
 void displayPlantPage() {
   // Title
-  screen.setCursor(30, 10);
-  screen.print("Plante ");
-  screen.print(homePageMenuIndex + 1);
+  screen.setCursor((SCREEN_WIDTH - strlen(plants[homePageMenuIndex].name)) / 2 - 1, 10);
+  screen.print(plants[homePageMenuIndex].name);
 
   // Separator
   screen.drawFastHLine(0, 20, SCREEN_WIDTH, WHITE);
 
   // Moisture sensor
-  uint16_t moistureValue = analogRead(MOISTURE_SENSOR_1_PIN);
-  int8_t moisturePercent = (1 - ((moistureValue - MIN_MOISTURE_VALUE) / (MAX_MOISTURE_VALUE - MIN_MOISTURE_VALUE))) * 100;
+  int16_t moistureValue = analogRead(MOISTURE_SENSOR_1_PIN);
+  //moistureValue = 400;
+  int16_t moisturePercent = (1 - ((float) (moistureValue - MIN_MOISTURE_VALUE) / (MAX_MOISTURE_VALUE - MIN_MOISTURE_VALUE))) * 100;
   if (moisturePercent < 0) {
     moisturePercent = 0;
   }
@@ -216,7 +229,7 @@ void displayPlantPage() {
   uint8_t startY = 25;
   uint8_t width = 11;
   uint8_t height = 26;
-  uint8_t gaugeHeight = ((height - 2) / 100) * moisturePercent;
+  uint8_t gaugeHeight = ((float) (height - 2) / 100) * moisturePercent;
   screen.drawFastVLine(startX, startY, height, WHITE);
   screen.drawFastVLine(startX + width - 1, startY, height, WHITE);
   screen.drawFastHLine(startX, startY + height - 1, width, WHITE);
@@ -229,7 +242,7 @@ void displayPlantPage() {
   // Menu
   uint8_t menuX = 20;
   uint8_t menuY = 25;
-  for (uint8_t index = plantPageMenuOffset; index < plantPageMenuSize; index++) {
+  for (uint8_t index = plantPageMenuOffset; index < PLANT_PAGE_MENU_SIZE; index++) {
     screen.setCursor(menuX + 2, menuY + 2 + (index - plantPageMenuOffset) * 12);
     screen.print(plantPageMenu[index]);
     if (index == plantPageMenuIndex) {
@@ -251,7 +264,7 @@ void onNext() {
     }
   } else if (currentPage == PAGE_PLANT) {
     plantPageMenuIndex++;
-    if (plantPageMenuIndex > plantPageMenuSize - 1) {
+    if (plantPageMenuIndex > PLANT_PAGE_MENU_SIZE - 1) {
       plantPageMenuIndex = 0;
       plantPageMenuOffset = 0;
     } else if ((plantPageMenuIndex - plantPageMenuOffset) >= 3) {
@@ -276,8 +289,8 @@ void onPrevious() {
     }
   } else if (currentPage == PAGE_PLANT) {
     if (plantPageMenuIndex == 0) {
-      plantPageMenuIndex = plantPageMenuSize - 1;
-      plantPageMenuOffset = plantPageMenuSize - 3;
+      plantPageMenuIndex = PLANT_PAGE_MENU_SIZE - 1;
+      plantPageMenuOffset = PLANT_PAGE_MENU_SIZE - 3;
     } else {
       plantPageMenuIndex--;
 
