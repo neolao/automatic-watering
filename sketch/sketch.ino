@@ -11,10 +11,12 @@
 #define MOISTURE_SENSOR_1_PIN A0
 #define MOISTURE_SENSOR_2_PIN A1
 #define MOISTURE_SENSOR_3_PIN A2
+#define MOISTURE_SENSOR_4_PIN A3
+#define PUMP_1_PIN 5
+#define PUMP_2_PIN 6
+#define PUMP_3_PIN 7
+#define PUMP_4_PIN 8
 //#define ENCODER_DO_NOT_USE_INTERRUPTS
-
-#define MIN_MOISTURE_VALUE 300
-#define MAX_MOISTURE_VALUE 600
 
 #define MAX_VOLT 4.2
 #define MIN_VOLT 3.2
@@ -31,7 +33,8 @@ long lastActivityTime;
 enum Page
 {
   PAGE_HOME,
-  PAGE_PLANT
+  PAGE_PLANT,
+  PAGE_WATERING
 };
 Page currentPage = PAGE_HOME;
 uint8_t homePageMenuIndex = 0;
@@ -42,17 +45,19 @@ struct Plant {
   uint16_t moistureSensorPin;
   uint16_t minMoisture;
   uint16_t maxMoisture;
+  uint16_t pumpPin;
+  uint16_t pumpDuration;
 };
 #define PLANT_COUNT 8
 Plant plants[PLANT_COUNT] = {
-  {"A", A0, 300, 600},
-  {"B", A1, 300, 600},
-  {"C", A2, 300, 600},
-  {"D", A3, 300, 600},
-  {"E", A0, 300, 600},
-  {"F", A0, 300, 600},
-  {"G", A0, 300, 600},
-  {"H", A0, 300, 600}
+  {"Raisin", MOISTURE_SENSOR_1_PIN, 300, 600, PUMP_1_PIN, 2000},
+  {"Plante B", MOISTURE_SENSOR_2_PIN, 300, 600, PUMP_2_PIN, 2000},
+  {"Plante C", MOISTURE_SENSOR_3_PIN, 300, 600, PUMP_3_PIN, 2000},
+  {"Plante D", MOISTURE_SENSOR_4_PIN, 300, 600, PUMP_4_PIN, 2000},
+  {"Plante E", MOISTURE_SENSOR_4_PIN, 300, 600, PUMP_4_PIN, 2000},
+  {"Plante F", MOISTURE_SENSOR_4_PIN, 300, 600, PUMP_4_PIN, 2000},
+  {"Plante G", MOISTURE_SENSOR_4_PIN, 300, 600, PUMP_4_PIN, 2000},
+  {"Plante H", MOISTURE_SENSOR_4_PIN, 300, 600, PUMP_4_PIN, 2000}
 };
 uint8_t plantPageMenuIndex = 0;
 uint8_t plantPageMenuOffset = 0;
@@ -63,6 +68,7 @@ char *plantPageMenu[PLANT_PAGE_MENU_SIZE] = {
   "Interval",
   "Seuil"
 };
+long pumpStartTime;
 
 void setup() {
   /*
@@ -77,22 +83,28 @@ void setup() {
 }
 
 void loop() {
-  checkPowerSaver();
-
-  uint8_t newRotaryPosition = rotaryButton.read() / 4;
-  if (newRotaryPosition != rotaryPosition) {
-    if (newRotaryPosition > rotaryPosition) {
-      onNext();
-    } else {
-      onPrevious();
+  if (currentPage == PAGE_WATERING) {
+    if ((millis() - pumpStartTime) > plants[homePageMenuIndex].pumpDuration) {
+      currentPage = PAGE_PLANT;
     }
-    rotaryPosition = newRotaryPosition;
-  }
-
-
-  if (digitalRead(BUTTON_SW_PIN) == LOW) {
-    onClick();
-    delay(100);
+  } else {
+    checkPowerSaver();
+  
+    uint8_t newRotaryPosition = rotaryButton.read() / 4;
+    if (newRotaryPosition != rotaryPosition) {
+      if (newRotaryPosition > rotaryPosition) {
+        onNext();
+      } else {
+        onPrevious();
+      }
+      rotaryPosition = newRotaryPosition;
+    }
+  
+  
+    if (digitalRead(BUTTON_SW_PIN) == LOW) {
+      onClick();
+      delay(200);
+    }
   }
 
   updateScreen();
@@ -157,6 +169,9 @@ void updateScreen() {
     case PAGE_PLANT:
       displayPlantPage();
       break;
+    case PAGE_WATERING:
+      displayWateringPage();
+      break;
   }
   /*
     screen.setCursor(0, 9);
@@ -206,17 +221,18 @@ void displayHomePage() {
 }
 
 void displayPlantPage() {
+  Plant plant = plants[homePageMenuIndex];
+  
   // Title
-  screen.setCursor((SCREEN_WIDTH - strlen(plants[homePageMenuIndex].name)) / 2 - 1, 10);
-  screen.print(plants[homePageMenuIndex].name);
+  screen.setCursor(0, 10);
+  screen.print(plant.name);
 
   // Separator
   screen.drawFastHLine(0, 20, SCREEN_WIDTH, WHITE);
 
   // Moisture sensor
-  int16_t moistureValue = analogRead(MOISTURE_SENSOR_1_PIN);
-  //moistureValue = 400;
-  int16_t moisturePercent = (1 - ((float) (moistureValue - MIN_MOISTURE_VALUE) / (MAX_MOISTURE_VALUE - MIN_MOISTURE_VALUE))) * 100;
+  int16_t moistureValue = analogRead(plant.moistureSensorPin);
+  int16_t moisturePercent = (1 - ((float) (moistureValue - plant.minMoisture) / (plant.maxMoisture - plant.minMoisture))) * 100;
   if (moisturePercent < 0) {
     moisturePercent = 0;
   }
@@ -236,7 +252,7 @@ void displayPlantPage() {
   screen.fillRect(startX + 2, startY + height - gaugeHeight, width - 4, gaugeHeight, WHITE);
 
   // Moisture percentage
-  drawNumber(moisturePercent, 1, 52);
+  drawPercentage(moisturePercent, 1, 52);
   drawNumber(moistureValue, 0, 59);
 
   // Menu
@@ -249,6 +265,23 @@ void displayPlantPage() {
       screen.fillRect(menuX, menuY + (index - plantPageMenuOffset) * 12, SCREEN_WIDTH - menuX, 12, INVERSE);
     }
   }
+}
+
+void displayWateringPage() {
+  Plant plant = plants[homePageMenuIndex];
+  
+  // Title
+  screen.setCursor(0, 10);
+  screen.print(plant.name);
+
+  // Separator
+  screen.drawFastHLine(0, 20, SCREEN_WIDTH, WHITE);
+
+  // Message
+  screen.setCursor(0, 30);
+  screen.println("Arrosage ...");
+  screen.print(plant.pumpDuration - (millis() - pumpStartTime));
+  screen.print(" ms");
 }
 
 void onNext() {
@@ -308,9 +341,15 @@ void onClick() {
     currentPage = PAGE_PLANT;
     plantPageMenuIndex = 0;
   } else if (currentPage == PAGE_PLANT) {
+    // Back
     if (plantPageMenuIndex == 0) {
-      // Back
       currentPage = PAGE_HOME;
+    }
+
+    // Watering
+    if (plantPageMenuIndex == 1) {
+      currentPage = PAGE_WATERING;
+      pumpStartTime = millis();
     }
   }
 }
@@ -385,6 +424,14 @@ void drawDigit(uint8_t digit, uint8_t x, uint8_t y) {
   }
 }
 
+void drawPercentCharacter(uint8_t x, uint8_t y) {
+  screen.drawPixel(x, y, WHITE);
+  screen.drawPixel(x + 2, y + 4, WHITE);
+  screen.drawFastVLine(x, y + 3, 2, WHITE);
+  screen.drawPixel(x + 1, y + 2, WHITE);
+  screen.drawFastVLine(x + 2, y, 2, WHITE);
+}
+
 void drawNumber(long value, uint8_t x, uint8_t y) {
   uint8_t digit;
   uint8_t offset = 0;
@@ -412,6 +459,27 @@ void drawNumber(long value, uint8_t x, uint8_t y) {
 
   digit = value % 10;
   drawDigit(digit, x + offset, y);
+}
+
+void drawPercentage(long value, uint8_t x, uint8_t y) {
+  uint8_t digit;
+  uint8_t offset = 0;
+
+  if (value >= 100) {
+    digit = (value / 100) % 10;
+    drawDigit(digit, x + offset, y);
+    offset += 5;
+  }
+  if (value >= 10) {
+    digit = (value / 10) % 10;
+    drawDigit(digit, x + offset, y);
+    offset += 5;
+  }
+
+  digit = value % 10;
+  drawDigit(digit, x + offset, y);
+
+  drawPercentCharacter(x + offset + 5, y);
 }
 
 void drawBattery(uint8_t percent, uint8_t x, uint8_t y) {
