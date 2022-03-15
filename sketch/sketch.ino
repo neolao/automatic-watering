@@ -30,11 +30,12 @@ Encoder rotaryButton(BUTTON_CLK_PIN, BUTTON_DT_PIN);
 long rotaryPosition = 0;
 long lastActivityTime;
 
-enum Page
-{
+enum Page {
   PAGE_HOME,
   PAGE_PLANT,
-  PAGE_WATERING
+  PAGE_WATERING,
+  PAGE_INTERVAL,
+  PAGE_MOISTURE_THRESHOLD
 };
 Page currentPage = PAGE_HOME;
 uint8_t homePageMenuIndex = 0;
@@ -46,18 +47,29 @@ struct Plant {
   uint16_t minMoisture;
   uint16_t maxMoisture;
   uint16_t pumpPin;
-  uint16_t pumpDuration;
+  uint16_t pumpDuration; // Milliseconds
+  uint8_t interval; // Hours
+  uint16_t moistureThreshold;
 };
 #define PLANT_COUNT 8
 Plant plants[PLANT_COUNT] = {
-  {"Raisin", MOISTURE_SENSOR_1_PIN, 300, 600, PUMP_1_PIN, 2000},
-  {"Plante B", MOISTURE_SENSOR_2_PIN, 300, 600, PUMP_2_PIN, 2000},
-  {"Plante C", MOISTURE_SENSOR_3_PIN, 300, 600, PUMP_3_PIN, 2000},
-  {"Plante D", MOISTURE_SENSOR_4_PIN, 300, 600, PUMP_4_PIN, 2000},
-  {"Plante E", MOISTURE_SENSOR_4_PIN, 300, 600, PUMP_4_PIN, 2000},
-  {"Plante F", MOISTURE_SENSOR_4_PIN, 300, 600, PUMP_4_PIN, 2000},
-  {"Plante G", MOISTURE_SENSOR_4_PIN, 300, 600, PUMP_4_PIN, 2000},
-  {"Plante H", MOISTURE_SENSOR_4_PIN, 300, 600, PUMP_4_PIN, 2000}
+  {
+    /* name              */ "Raisin", 
+    /* moistureSensorPin */ MOISTURE_SENSOR_1_PIN, 
+    /* minMoisture       */ 300, 
+    /* maxMoisture .     */ 600, 
+    /* pumpPin           */ PUMP_1_PIN, 
+    /* pumpDuration      */ 2000, 
+    /* interval          */ 24,
+    /* moistureThreshold */ 500
+   },
+  {"Plante B", MOISTURE_SENSOR_2_PIN, 300, 600, PUMP_2_PIN, 2000, 24, 500},
+  {"Plante C", MOISTURE_SENSOR_3_PIN, 300, 600, PUMP_3_PIN, 2000, 24, 500},
+  {"Plante D", MOISTURE_SENSOR_4_PIN, 300, 600, PUMP_4_PIN, 2000, 24, 500},
+  {"Plante E", MOISTURE_SENSOR_4_PIN, 300, 600, PUMP_4_PIN, 2000, 24, 500},
+  {"Plante F", MOISTURE_SENSOR_4_PIN, 300, 600, PUMP_4_PIN, 2000, 24, 500},
+  {"Plante G", MOISTURE_SENSOR_4_PIN, 300, 600, PUMP_4_PIN, 2000, 24, 500},
+  {"Plante H", MOISTURE_SENSOR_4_PIN, 300, 600, PUMP_4_PIN, 2000, 24, 500}
 };
 uint8_t plantPageMenuIndex = 0;
 uint8_t plantPageMenuOffset = 0;
@@ -80,12 +92,18 @@ void setup() {
   setupScreen();
   setupRotaryButton();
   setupMoistureSensors();
+  setupPumps();
 }
 
 void loop() {
+  Plant plant = plants[homePageMenuIndex];
+  
   if (currentPage == PAGE_WATERING) {
-    if ((millis() - pumpStartTime) > plants[homePageMenuIndex].pumpDuration) {
+    if ((millis() - pumpStartTime) > plant.pumpDuration) {
+      digitalWrite(plant.pumpPin, LOW);
       currentPage = PAGE_PLANT;
+    } else {
+      digitalWrite(plant.pumpPin, HIGH);
     }
   } else {
     checkPowerSaver();
@@ -99,7 +117,6 @@ void loop() {
       }
       rotaryPosition = newRotaryPosition;
     }
-  
   
     if (digitalRead(BUTTON_SW_PIN) == LOW) {
       onClick();
@@ -140,7 +157,17 @@ void setupRotaryButton() {
 }
 
 void setupMoistureSensors() {
-  
+  pinMode(MOISTURE_SENSOR_1_PIN, INPUT);
+  pinMode(MOISTURE_SENSOR_2_PIN, INPUT);
+  pinMode(MOISTURE_SENSOR_3_PIN, INPUT);
+  pinMode(MOISTURE_SENSOR_4_PIN, INPUT);
+}
+
+void setupPumps() {
+  pinMode(PUMP_1_PIN, OUTPUT);
+  pinMode(PUMP_2_PIN, OUTPUT);
+  pinMode(PUMP_3_PIN, OUTPUT);
+  pinMode(PUMP_4_PIN, OUTPUT);
 }
 
 void updateScreen() {
@@ -157,7 +184,6 @@ void updateScreen() {
   uint8_t batteryPercent = (batteryLevel / (MAX_VOLT - MIN_VOLT)) * 100;
   drawBattery(batteryPercent, SCREEN_WIDTH - BATTERY_GAUGE_WIDTH, 0);
 
-
   // Separator
   screen.drawFastHLine(0, 6, SCREEN_WIDTH, WHITE);
 
@@ -172,12 +198,13 @@ void updateScreen() {
     case PAGE_WATERING:
       displayWateringPage();
       break;
+    case PAGE_INTERVAL:
+      displayIntervalPage();
+      break;
+    case PAGE_MOISTURE_THRESHOLD:
+      displayMoistureThreshold();
+      break;
   }
-  /*
-    screen.setCursor(0, 9);
-    screen.println(rotaryButtonValue);
-    screen.println(millis());
-  */
 
   // Update
   screen.display();
@@ -211,6 +238,7 @@ void displayHomePage() {
   // Menu
   uint8_t menuX = 20;
   uint8_t menuY = 10;
+  screen.setTextSize(1);
   for (uint8_t index = homePageMenuOffset; index < PLANT_COUNT; index++) {
     screen.setCursor(menuX + 2, menuY + 2 + (index - homePageMenuOffset) * 12);
     screen.print(plants[index].name);
@@ -223,12 +251,7 @@ void displayHomePage() {
 void displayPlantPage() {
   Plant plant = plants[homePageMenuIndex];
   
-  // Title
-  screen.setCursor(0, 10);
-  screen.print(plant.name);
-
-  // Separator
-  screen.drawFastHLine(0, 20, SCREEN_WIDTH, WHITE);
+  displayPlantTitle(plant);
 
   // Moisture sensor
   int16_t moistureValue = analogRead(plant.moistureSensorPin);
@@ -258,6 +281,7 @@ void displayPlantPage() {
   // Menu
   uint8_t menuX = 20;
   uint8_t menuY = 25;
+  screen.setTextSize(1);
   for (uint8_t index = plantPageMenuOffset; index < PLANT_PAGE_MENU_SIZE; index++) {
     screen.setCursor(menuX + 2, menuY + 2 + (index - plantPageMenuOffset) * 12);
     screen.print(plantPageMenu[index]);
@@ -270,18 +294,46 @@ void displayPlantPage() {
 void displayWateringPage() {
   Plant plant = plants[homePageMenuIndex];
   
+  displayPlantTitle(plant);
+
+  // Message
+  screen.setCursor(0, 30);
+  screen.setTextSize(1);
+  screen.println("Arrosage ...");
+  screen.setTextSize(2);
+  screen.print(plant.pumpDuration - (millis() - pumpStartTime));
+  screen.print(" ms");
+}
+
+void displayIntervalPage() {
+  Plant plant = plants[homePageMenuIndex];
+
+  displayPlantTitle(plant);
+
+  screen.setCursor(0, 30);
+  screen.setTextSize(3);
+  screen.print(plant.interval);
+  screen.print("h");
+}
+
+void displayMoistureThreshold() {
+  Plant plant = plants[homePageMenuIndex];
+
+  displayPlantTitle(plant);
+
+  screen.setCursor(0, 30);
+  screen.setTextSize(3);
+  screen.print(plant.moistureThreshold);
+}
+
+void displayPlantTitle(Plant plant) {
   // Title
   screen.setCursor(0, 10);
+  screen.setTextSize(1);
   screen.print(plant.name);
 
   // Separator
   screen.drawFastHLine(0, 20, SCREEN_WIDTH, WHITE);
-
-  // Message
-  screen.setCursor(0, 30);
-  screen.println("Arrosage ...");
-  screen.print(plant.pumpDuration - (millis() - pumpStartTime));
-  screen.print(" ms");
 }
 
 void onNext() {
@@ -303,6 +355,10 @@ void onNext() {
     } else if ((plantPageMenuIndex - plantPageMenuOffset) >= 3) {
       plantPageMenuOffset++;
     }
+  } else if (currentPage == PAGE_INTERVAL) {
+    plants[homePageMenuIndex].interval++;
+  } else if (currentPage == PAGE_MOISTURE_THRESHOLD) {
+    plants[homePageMenuIndex].moistureThreshold++;
   }
 }
 
@@ -331,6 +387,10 @@ void onPrevious() {
         plantPageMenuOffset--;
       }
     }
+  } else if (currentPage == PAGE_INTERVAL) {
+    plants[homePageMenuIndex].interval--;
+  } else if (currentPage == PAGE_MOISTURE_THRESHOLD) {
+    plants[homePageMenuIndex].moistureThreshold--;
   }
 }
 
@@ -351,6 +411,20 @@ void onClick() {
       currentPage = PAGE_WATERING;
       pumpStartTime = millis();
     }
+
+    // Interval
+    if (plantPageMenuIndex == 2) {
+      currentPage = PAGE_INTERVAL;
+    }
+
+    // Moisture threshold
+    if (plantPageMenuIndex == 3) {
+      currentPage = PAGE_MOISTURE_THRESHOLD;
+    }
+  } else if (currentPage == PAGE_INTERVAL) {
+    currentPage = PAGE_PLANT;
+  } else if (currentPage == PAGE_MOISTURE_THRESHOLD) {
+    currentPage = PAGE_PLANT;
   }
 }
 
